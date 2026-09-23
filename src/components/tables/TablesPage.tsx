@@ -54,7 +54,7 @@ export function TablesPage() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {tables.map((table) => {
-            const Icon = TABLE_ICONS[table.icon];
+            const Icon = TABLE_ICONS[table.icon] ?? TABLE_ICONS.table;
             const count = rows[table.id]?.length ?? 0;
             const href =
               table.id === MEMBERS_TABLE_ID

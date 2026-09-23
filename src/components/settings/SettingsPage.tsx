@@ -33,6 +33,7 @@ import {
   saveWorkspaceToCloud,
   setCloudSyncEnabled,
 } from "@/lib/data/google-cloud";
+import { SupabaseAccountSection } from "@/components/settings/SupabaseAccountSection";
 
 export function SettingsPage() {
   const profile = useWorkspace((s) => s.profile);
@@ -300,6 +301,8 @@ export function SettingsPage() {
           </div>
         </div>
       </section>
+
+      <SupabaseAccountSection />
 
       <section className="rounded-xl bg-card p-5 shadow-card">
         <h3 className="text-sm font-semibold">Google Sheets</h3>

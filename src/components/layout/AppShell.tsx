@@ -25,6 +25,7 @@ function pageTitle(pathname: string): string {
 export function AppShell({ children }: { children: ReactNode }) {
   const hydrate = useWorkspace((s) => s.hydrate);
   const locked = useWorkspace((s) => s.locked);
+  const hydrated = useWorkspace((s) => s.hydrated);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -43,6 +44,14 @@ export function AppShell({ children }: { children: ReactNode }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  if (!hydrated) {
+    return (
+      <div className="app-shell-bg flex min-h-dvh items-center justify-center">
+        <div className="text-sm text-muted-foreground">Carregando seu workspace…</div>
+      </div>
+    );
+  }
 
   if (locked) return <LockScreen />;
 

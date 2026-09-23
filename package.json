@@ -73,6 +73,7 @@
     "tw-animate-css": "^1.3.4",
     "vaul": "^1.1.2",
     "zod": "^4.4.0",
+    "@supabase/supabase-js": "^2.49.8",
     "zustand": "^5.0.0"
   },
   "devDependencies": {

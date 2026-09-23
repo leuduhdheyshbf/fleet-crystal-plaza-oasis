@@ -1,4 +1,3 @@
-import { uid } from "@/lib/utils";
 import type {
   Activity,
   ColumnDef,
@@ -23,7 +22,7 @@ function row(
   cells: Row["cells"],
 ): Row {
   return {
-    id: uid("row"),
+    id: `row_seed_${tableId}_${createdAt}`,
     tableId,
     cells,
     createdAt,
@@ -380,35 +379,35 @@ export function createSeedSnapshot(): WorkspaceSnapshot {
 
   const activity: Activity[] = [
     {
-      id: uid("act"),
+      id: "act_seed_1",
       type: "create",
       message: "Cassio foi adicionado em Membros",
       tableId: MEMBERS_TABLE_ID,
       at: hours(3),
     },
     {
-      id: uid("act"),
+      id: "act_seed_2",
       type: "create",
       message: "Diego Ramos entrou em Recrutamentos",
       tableId: TBL_RECRUIT,
       at: hours(6),
     },
     {
-      id: uid("act"),
+      id: "act_seed_3",
       type: "update",
       message: "Open Cup Setembro atualizado",
       tableId: TBL_TOURNAMENT,
       at: hours(14),
     },
     {
-      id: uid("act"),
+      id: "act_seed_4",
       type: "create",
       message: "Live de apresentação confirmada",
       tableId: TBL_EVENTS,
       at: days(1),
     },
     {
-      id: uid("act"),
+      id: "act_seed_5",
       type: "table_create",
       message: "Tabela Financeiro criada",
       tableId: TBL_FINANCE,

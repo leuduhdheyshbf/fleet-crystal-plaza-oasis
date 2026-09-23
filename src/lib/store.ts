@@ -79,7 +79,16 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => ({
 
   hydrate: async () => {
     if (get().hydrated) return;
-    const loaded = await workspaceAdapter.load();
+    let loaded = await workspaceAdapter.load();
+
+    try {
+      const mod = await import("@/lib/data/supabase-workspace");
+      const remote = await mod.loadWorkspaceFromSupabase();
+      if (remote) loaded = remote;
+    } catch {
+      /* offline ou sem conta */
+    }
+
     if (loaded) {
       const have = new Set(loaded.tables.map((x) => x.id));
       const missing = seed.tables.filter((x) => !have.has(x.id));
@@ -97,6 +106,7 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => ({
         locked: Boolean(loaded.locked),
         hydrated: true,
       });
+      await workspaceAdapter.save(snapshotOf(get()));
     } else {
       set({ hydrated: true });
       await workspaceAdapter.save(snapshotOf(get()));
@@ -106,18 +116,17 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => ({
   persistNow: () => {
     const snap = snapshotOf(get());
     void workspaceAdapter.save(snap);
+
+    void import("@/lib/data/supabase-workspace")
+      .then((m) => m.saveWorkspaceToSupabase(snap))
+      .catch(() => undefined);
+
     if (typeof window !== "undefined" && window.localStorage.getItem("nexora.google.cloud_sync") === "1") {
       void import("@/lib/data/google-cloud")
         .then((m) => {
-          const clientId = m.getStoredClientId?.() ?? "";
           const cid =
-            (typeof window !== "undefined" &&
-              window.localStorage.getItem("nexora.google.client_id")?.trim()) ||
-            "";
-          if (!cid || !m.isGoogleConnected?.()) {
-            // isGoogleConnected is on google-export; cloud uses token in session
-            return m.saveWorkspaceToCloud(snap, cid || clientId);
-          }
+            window.localStorage.getItem("nexora.google.client_id")?.trim() || "";
+          if (!cid) return;
           return m.saveWorkspaceToCloud(snap, cid);
         })
         .catch(() => undefined);

@@ -17,10 +17,16 @@ import {
 import { useWorkspace } from "@/lib/store";
 import { sanitizeText } from "@/lib/data/sanitize";
 import {
-  getGoogleSheetsAuthUrl,
-  getGoogleSheetsConnection,
-  syncWorkspaceTableToGoogle,
-} from "@/lib/data/google-sheets";
+  clearGoogleToken,
+  connectGoogleSheets,
+  createSpreadsheetWithAllTables,
+  disconnectGoogleSheets,
+  downloadAllTablesAsCsv,
+  getStoredClientId,
+  isGoogleConnected,
+  setStoredClientId,
+  syncOneTableToExistingSheet,
+} from "@/lib/data/google-export";
 
 export function SettingsPage() {
   const profile = useWorkspace((s) => s.profile);
@@ -28,6 +34,8 @@ export function SettingsPage() {
   const setLocked = useWorkspace((s) => s.setLocked);
   const resetWorkspace = useWorkspace((s) => s.resetWorkspace);
   const persistNow = useWorkspace((s) => s.persistNow);
+  const tables = useWorkspace((s) => s.tables);
+  const rows = useWorkspace((s) => s.rows);
   const snapshot = useWorkspace((s) => ({
     version: s.version,
     tables: s.tables,
@@ -40,25 +48,23 @@ export function SettingsPage() {
 
   const [name, setName] = useState(profile.name);
   const [role, setRole] = useState(profile.role);
-  const tables = useWorkspace((s) => s.tables);
+  const [clientId, setClientId] = useState("");
   const [googleConnected, setGoogleConnected] = useState(false);
   const [sheetTableId, setSheetTableId] = useState(tables[0]?.id ?? "");
   const [spreadsheetUrl, setSpreadsheetUrl] = useState("");
   const [sheetName, setSheetName] = useState("Sheet1");
   const [syncing, setSyncing] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [lastSheetUrl, setLastSheetUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    void getGoogleSheetsConnection().then((status) => setGoogleConnected(status.connected)).catch(() => setGoogleConnected(false));
-    const params = new URLSearchParams(window.location.search);
-    const result = params.get("googleSheets");
-    if (result === "connected") toast.success("Google Sheets conectado");
-    if (result === "error") toast.error("Não foi possível conectar ao Google Sheets");
-    if (result) {
-      params.delete("googleSheets");
-      const clean = params.toString();
-      window.history.replaceState({}, "", `${window.location.pathname}${clean ? `?${clean}` : ""}`);
-    }
+    setClientId(getStoredClientId());
+    setGoogleConnected(isGoogleConnected());
   }, []);
+
+  useEffect(() => {
+    if (!sheetTableId && tables[0]?.id) setSheetTableId(tables[0].id);
+  }, [tables, sheetTableId]);
 
   function spreadsheetIdFromInput(value: string): string {
     const trimmed = value.trim();
@@ -66,45 +72,92 @@ export function SettingsPage() {
     return match?.[1] ?? trimmed;
   }
 
-  async function connectGoogleSheets() {
+  async function handleConnectGoogle() {
+    const id = clientId.trim() || getStoredClientId();
+    if (!id) {
+      toast.error("Cole o Client ID do Google Cloud (tipo aplicativo Web)");
+      return;
+    }
+    setStoredClientId(id);
     try {
-      const url = await getGoogleSheetsAuthUrl();
-      window.location.assign(url);
+      await connectGoogleSheets(id);
+      setGoogleConnected(true);
+      toast.success("Google Sheets conectado");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Configure as credenciais do Google");
+      setGoogleConnected(false);
+      toast.error(error instanceof Error ? error.message : "Falha ao conectar Google");
     }
   }
 
-  async function syncToGoogleSheets() {
+  async function handleDisconnectGoogle() {
+    await disconnectGoogleSheets();
+    clearGoogleToken();
+    setGoogleConnected(false);
+    toast.success("Google Sheets desconectado");
+  }
+
+  async function handleCreateAllSheets() {
+    const id = clientId.trim() || getStoredClientId();
+    if (!id) {
+      toast.error("Informe o Google Client ID antes de criar a planilha");
+      return;
+    }
+    if (!tables.length) {
+      toast.error("Não há tabelas no workspace");
+      return;
+    }
+
+    setCreating(true);
+    try {
+      setStoredClientId(id);
+      const state = useWorkspace.getState();
+      const result = await createSpreadsheetWithAllTables(
+        {
+          tables: state.tables,
+          rows: state.rows,
+          profile: state.profile,
+        },
+        id,
+      );
+      setGoogleConnected(true);
+      setLastSheetUrl(result.spreadsheetUrl);
+      toast.success(
+        `Planilha criada: ${result.sheetCount} abas, ${result.rowCount} registros`,
+      );
+      window.open(result.spreadsheetUrl, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao criar planilha");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleSyncOneTable() {
+    const id = clientId.trim() || getStoredClientId();
     const spreadsheetId = spreadsheetIdFromInput(spreadsheetUrl);
-    if (!googleConnected) {
+    if (!id) {
+      toast.error("Informe o Google Client ID");
+      return;
+    }
+    if (!googleConnected && !isGoogleConnected()) {
       toast.error("Conecte sua conta Google primeiro");
       return;
     }
     if (!sheetTableId || !spreadsheetId || !sheetName.trim()) {
-      toast.error("Informe tabela, planilha e aba");
+      toast.error("Informe tabela, planilha e nome da aba");
       return;
     }
 
     setSyncing(true);
     try {
-      const snapshot = useWorkspace.getState();
-      const result = await syncWorkspaceTableToGoogle({
-        data: {
-          tableId: sheetTableId,
-          spreadsheetId,
-          sheetName: sheetName.trim(),
-          snapshot: {
-            version: snapshot.version,
-            tables: snapshot.tables,
-            rows: snapshot.rows,
-            activity: snapshot.activity,
-            profile: snapshot.profile,
-            views: snapshot.views,
-            locked: snapshot.locked,
-          },
-        },
-      });
+      const state = useWorkspace.getState();
+      const result = await syncOneTableToExistingSheet(
+        { tables: state.tables, rows: state.rows },
+        sheetTableId,
+        spreadsheetId,
+        sheetName.trim(),
+        id,
+      );
       toast.success(`Google Sheets atualizado: ${result.updatedRows} registros`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao sincronizar");
@@ -113,12 +166,14 @@ export function SettingsPage() {
     }
   }
 
-  async function disconnectGoogle() {
-    // The server-side connection is intentionally removed by deleting its token.
-    const { disconnectGoogleSheetsConnection } = await import("@/lib/data/google-sheets");
-    await disconnectGoogleSheetsConnection();
-    setGoogleConnected(false);
-    toast.success("Google Sheets desconectado");
+  function handleDownloadCsv() {
+    const state = useWorkspace.getState();
+    if (!state.tables.length) {
+      toast.error("Não há tabelas para exportar");
+      return;
+    }
+    const n = downloadAllTablesAsCsv({ tables: state.tables, rows: state.rows });
+    toast.success(`${n} arquivo(s) CSV baixado(s)`);
   }
 
   function save() {
@@ -175,43 +230,110 @@ export function SettingsPage() {
       <section className="rounded-xl bg-card p-5 shadow-card">
         <h3 className="text-sm font-semibold">Google Sheets</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          Conecte sua conta Google e envie qualquer tabela do workspace para uma aba existente.
+          Cria uma planilha nova com <strong>uma aba por tabela</strong> e grava todos os registros,
+          ou sincroniza uma tabela em uma planilha que você já tem.
         </p>
+
         <div className="mt-4 space-y-4">
+          <div className="grid gap-1.5">
+            <Label htmlFor="google-client-id">Google Client ID (Web)</Label>
+            <Input
+              id="google-client-id"
+              placeholder="xxxxx.apps.googleusercontent.com"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              onBlur={() => setStoredClientId(clientId)}
+            />
+            <p className="text-xs text-muted-foreground">
+              No Google Cloud Console: APIs e serviços → Credenciais → ID do cliente OAuth (tipo
+              Aplicativo da Web). Ative a API Google Sheets e autorize a origem deste site.
+            </p>
+          </div>
+
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant={googleConnected ? "outline" : "default"} onClick={connectGoogleSheets} disabled={googleConnected}>
+            <Button
+              variant={googleConnected ? "outline" : "default"}
+              onClick={handleConnectGoogle}
+              disabled={googleConnected}
+            >
               {googleConnected ? "Google conectado" : "Conectar Google"}
             </Button>
-            {googleConnected && <Button variant="ghost" onClick={disconnectGoogle}>Desconectar</Button>}
+            {googleConnected && (
+              <Button variant="ghost" onClick={handleDisconnectGoogle}>
+                Desconectar
+              </Button>
+            )}
           </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="google-sheet-table">Tabela do workspace</Label>
-            <select
-              id="google-sheet-table"
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-              value={sheetTableId}
-              onChange={(e) => setSheetTableId(e.target.value)}
-            >
-              {tables.map((table) => <option key={table.id} value={table.id}>{table.name}</option>)}
-            </select>
+
+          <div className="rounded-lg border border-border/60 bg-muted/30 p-4 space-y-3">
+            <p className="text-sm font-medium">Salvar todas as tabelas</p>
+            <p className="text-xs text-muted-foreground">
+              Cria uma planilha &quot;Nexora — ...&quot; no seu Google Drive, com uma aba para cada tabela do
+              workspace ({tables.length} tabela{tables.length === 1 ? "" : "s"},{" "}
+              {Object.values(rows).reduce((n, list) => n + list.length, 0)} registros).
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={handleCreateAllSheets} disabled={creating}>
+                {creating ? "Criando planilha…" : "Criar planilha e salvar tudo"}
+              </Button>
+              <Button variant="outline" onClick={handleDownloadCsv}>
+                Baixar CSVs (todas)
+              </Button>
+            </div>
+            {lastSheetUrl && (
+              <p className="text-xs">
+                Última planilha:{" "}
+                <a
+                  className="text-primary underline underline-offset-2"
+                  href={lastSheetUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  abrir no Google Sheets
+                </a>
+              </p>
+            )}
           </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="google-spreadsheet">URL ou ID da planilha</Label>
-            <Input
-              id="google-spreadsheet"
-              placeholder="https://docs.google.com/spreadsheets/d/..."
-              value={spreadsheetUrl}
-              onChange={(e) => setSpreadsheetUrl(e.target.value)}
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="google-sheet-name">Nome da aba</Label>
-            <Input id="google-sheet-name" value={sheetName} onChange={(e) => setSheetName(e.target.value)} />
-          </div>
-          <div className="flex justify-end">
-            <Button onClick={syncToGoogleSheets} disabled={syncing || !googleConnected}>
-              {syncing ? "Sincronizando…" : "Enviar para Google Sheets"}
-            </Button>
+
+          <div className="border-t border-border/50 pt-4 space-y-3">
+            <p className="text-sm font-medium">Sincronizar uma tabela em planilha existente</p>
+            <div className="grid gap-1.5">
+              <Label htmlFor="google-sheet-table">Tabela do workspace</Label>
+              <select
+                id="google-sheet-table"
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                value={sheetTableId}
+                onChange={(e) => setSheetTableId(e.target.value)}
+              >
+                {tables.map((table) => (
+                  <option key={table.id} value={table.id}>
+                    {table.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="google-spreadsheet">URL ou ID da planilha</Label>
+              <Input
+                id="google-spreadsheet"
+                placeholder="https://docs.google.com/spreadsheets/d/..."
+                value={spreadsheetUrl}
+                onChange={(e) => setSpreadsheetUrl(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="google-sheet-name">Nome da aba</Label>
+              <Input
+                id="google-sheet-name"
+                value={sheetName}
+                onChange={(e) => setSheetName(e.target.value)}
+              />
+            </div>
+            <div className="flex justify-end">
+              <Button onClick={handleSyncOneTable} disabled={syncing}>
+                {syncing ? "Sincronizando…" : "Enviar tabela para a aba"}
+              </Button>
+            </div>
           </div>
         </div>
       </section>
@@ -222,7 +344,13 @@ export function SettingsPage() {
           Persistência atual via armazenamento local, isolada atrás de um adaptador pronto para API.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => { persistNow(); toast.success("Workspace sincronizado"); }}>
+          <Button
+            variant="outline"
+            onClick={() => {
+              persistNow();
+              toast.success("Workspace sincronizado");
+            }}
+          >
             Sincronizar agora
           </Button>
           <Button variant="outline" onClick={exportBackup}>

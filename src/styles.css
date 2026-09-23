@@ -1,0 +1,154 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme {
+  --color-background: #07080c;
+  --color-foreground: #e8eaef;
+  --color-card: #0e1018;
+  --color-card-foreground: #e8eaef;
+  --color-popover: #12151f;
+  --color-popover-foreground: #e8eaef;
+  --color-primary: #4d8bff;
+  --color-primary-foreground: #061018;
+  --color-secondary: #161a26;
+  --color-secondary-foreground: #e8eaef;
+  --color-muted: #131722;
+  --color-muted-foreground: #8b91a3;
+  --color-accent: #182033;
+  --color-accent-foreground: #d6e4ff;
+  --color-destructive: #f07178;
+  --color-destructive-foreground: #1a0a0c;
+  --color-border: rgb(232 234 239 / 0.08);
+  --color-input: rgb(232 234 239 / 0.1);
+  --color-ring: #4d8bff;
+  --color-success: #3dd68c;
+  --color-warning: #e6b450;
+  --color-sidebar: rgb(10 12 18 / 0.72);
+  --color-tone-blue: #7aa2ff;
+  --color-tone-teal: #5eead4;
+  --color-tone-amber: #fbbf77;
+  --color-tone-rose: #fb7185;
+  --color-tone-zinc: #a1a1aa;
+  --color-tone-emerald: #34d399;
+
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius: 12px;
+
+  --shadow-card: 0 0 0 1px rgb(255 255 255 / 0.06);
+  --shadow-card-hover: 0 0 0 1px rgb(255 255 255 / 0.12);
+  --shadow-glow: 0 0 24px color-mix(in oklab, var(--color-primary) 28%, transparent);
+  --shadow-overlay: 0 24px 80px rgb(0 0 0 / 0.45);
+
+  --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: var(--color-background);
+    color: var(--color-foreground);
+  }
+
+  body {
+    min-height: 100dvh;
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+    letter-spacing: -0.03em;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-primary) 35%, transparent);
+    color: var(--color-foreground);
+  }
+}
+
+.app-shell-bg {
+  background:
+    radial-gradient(1200px 500px at 12% -10%, rgb(77 139 255 / 0.08), transparent 55%),
+    radial-gradient(900px 420px at 100% 0%, rgb(77 139 255 / 0.04), transparent 50%),
+    var(--color-background);
+}
+
+.glass-panel {
+  background: var(--color-sidebar);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.stagger-in > * {
+  animation: rise-in 400ms var(--ease-smooth) both;
+}
+
+.stagger-in > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-in > *:nth-child(2) { animation-delay: 40ms; }
+.stagger-in > *:nth-child(3) { animation-delay: 80ms; }
+.stagger-in > *:nth-child(4) { animation-delay: 120ms; }
+.stagger-in > *:nth-child(5) { animation-delay: 160ms; }
+.stagger-in > *:nth-child(6) { animation-delay: 200ms; }
+.stagger-in > *:nth-child(7) { animation-delay: 240ms; }
+.stagger-in > *:nth-child(8) { animation-delay: 280ms; }
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+    filter: blur(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes pulse-soft {
+  50% { opacity: 0.55; }
+}
+
+.skeleton-pulse {
+  animation: pulse-soft 1.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stagger-in > *,
+  .skeleton-pulse {
+    animation: none !important;
+    filter: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+}

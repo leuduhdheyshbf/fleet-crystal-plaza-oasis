@@ -1,0 +1,1 @@
+import{h as e}from"./button-BYdOWy4Y.js";import{t}from"./TableWorkspace-DofOopsk.js";import{t as n}from"./index-CPHObq03.js";var r=e();function i(){let{tableId:e}=n.useParams();return(0,r.jsx)(t,{tableId:e})}export{i as component};

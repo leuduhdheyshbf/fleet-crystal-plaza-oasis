@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as MembersRouteImport } from './routes/members'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TablesRouteImport } from './routes/tables'
+import { Route as TablesIndexRouteImport } from './routes/tables.index'
 import { Route as TablesTableIdRouteImport } from './routes/tables.$tableId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -35,6 +36,11 @@ const TablesRoute = TablesRouteImport.update({
   path: '/tables',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TablesIndexRoute = TablesIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => TablesRoute,
+} as any)
 const TablesTableIdRoute = TablesTableIdRouteImport.update({
   id: '/$tableId',
   path: '/$tableId',
@@ -46,13 +52,14 @@ export interface FileRoutesByFullPath {
   '/members': typeof MembersRoute
   '/settings': typeof SettingsRoute
   '/tables': typeof TablesRouteWithChildren
+  '/tables/': typeof TablesIndexRoute
   '/tables/$tableId': typeof TablesTableIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/members': typeof MembersRoute
   '/settings': typeof SettingsRoute
-  '/tables': typeof TablesRouteWithChildren
+  '/tables': typeof TablesIndexRoute
   '/tables/$tableId': typeof TablesTableIdRoute
 }
 export interface FileRoutesById {
@@ -61,15 +68,28 @@ export interface FileRoutesById {
   '/members': typeof MembersRoute
   '/settings': typeof SettingsRoute
   '/tables': typeof TablesRouteWithChildren
+  '/tables/': typeof TablesIndexRoute
   '/tables/$tableId': typeof TablesTableIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/members' | '/settings' | '/tables' | '/tables/$tableId'
+  fullPaths:
+    | '/'
+    | '/members'
+    | '/settings'
+    | '/tables'
+    | '/tables/'
+    | '/tables/$tableId'
   fileRoutesByTo: FileRoutesByTo
   to: '/' | '/members' | '/settings' | '/tables' | '/tables/$tableId'
   id:
-    '__root__' | '/' | '/members' | '/settings' | '/tables' | '/tables/$tableId'
+    | '__root__'
+    | '/'
+    | '/members'
+    | '/settings'
+    | '/tables'
+    | '/tables/'
+    | '/tables/$tableId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -109,6 +129,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TablesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/tables/': {
+      id: '/tables/'
+      path: '/'
+      fullPath: '/tables/'
+      preLoaderRoute: typeof TablesIndexRouteImport
+      parentRoute: typeof TablesRoute
+    }
     '/tables/$tableId': {
       id: '/tables/$tableId'
       path: '/$tableId'
@@ -120,10 +147,12 @@ declare module '@tanstack/react-router' {
 }
 
 interface TablesRouteChildren {
+  TablesIndexRoute: typeof TablesIndexRoute
   TablesTableIdRoute: typeof TablesTableIdRoute
 }
 
 const TablesRouteChildren: TablesRouteChildren = {
+  TablesIndexRoute: TablesIndexRoute,
   TablesTableIdRoute: TablesTableIdRoute,
 }
 

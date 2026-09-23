@@ -27,6 +27,12 @@ import {
   setStoredClientId,
   syncOneTableToExistingSheet,
 } from "@/lib/data/google-export";
+import {
+  isCloudSyncEnabled,
+  loadWorkspaceFromCloud,
+  saveWorkspaceToCloud,
+  setCloudSyncEnabled,
+} from "@/lib/data/google-cloud";
 
 export function SettingsPage() {
   const profile = useWorkspace((s) => s.profile);
@@ -47,10 +53,14 @@ export function SettingsPage() {
   const [syncing, setSyncing] = useState(false);
   const [creating, setCreating] = useState(false);
   const [lastSheetUrl, setLastSheetUrl] = useState<string | null>(null);
+  const [cloudSync, setCloudSync] = useState(false);
+  const [cloudBusy, setCloudBusy] = useState(false);
+  const [lastCloudAt, setLastCloudAt] = useState<string | null>(null);
 
   useEffect(() => {
     setClientId(getStoredClientId());
     setGoogleConnected(isGoogleConnected());
+    setCloudSync(isCloudSyncEnabled());
   }, []);
 
   useEffect(() => {
@@ -84,7 +94,70 @@ export function SettingsPage() {
     await disconnectGoogleSheets();
     clearGoogleToken();
     setGoogleConnected(false);
-    toast.success("Google Sheets desconectado");
+    toast.success("Google desconectado");
+  }
+
+  async function handleSaveCloud() {
+    const id = clientId.trim() || getStoredClientId();
+    if (!id) {
+      toast.error("Informe o Google Client ID");
+      return;
+    }
+    setCloudBusy(true);
+    try {
+      setStoredClientId(id);
+      const state = useWorkspace.getState();
+      await saveWorkspaceToCloud(
+        {
+          version: state.version,
+          tables: state.tables,
+          rows: state.rows,
+          activity: state.activity,
+          profile: state.profile,
+          views: state.views,
+          locked: state.locked,
+        },
+        id,
+      );
+      setGoogleConnected(true);
+      setCloudSync(true);
+      setCloudSyncEnabled(true);
+      setLastCloudAt(new Date().toLocaleString("pt-BR"));
+      toast.success("Workspace salvo na nuvem (Google Drive)");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao salvar na nuvem");
+    } finally {
+      setCloudBusy(false);
+    }
+  }
+
+  async function handleLoadCloud() {
+    const id = clientId.trim() || getStoredClientId();
+    if (!id) {
+      toast.error("Informe o Google Client ID");
+      return;
+    }
+    setCloudBusy(true);
+    try {
+      setStoredClientId(id);
+      const remote = await loadWorkspaceFromCloud(id);
+      if (!remote) {
+        toast.error("Nenhum backup na nuvem ainda. Use “Salvar na nuvem” neste aparelho primeiro.");
+        return;
+      }
+      useWorkspace.setState({
+        ...remote,
+        hydrated: true,
+      });
+      useWorkspace.getState().persistNow();
+      setGoogleConnected(true);
+      setLastCloudAt(new Date().toLocaleString("pt-BR"));
+      toast.success("Workspace restaurado da nuvem");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao carregar da nuvem");
+    } finally {
+      setCloudBusy(false);
+    }
   }
 
   async function handleCreateAllSheets() {
@@ -247,7 +320,7 @@ export function SettingsPage() {
             />
             <p className="text-xs text-muted-foreground">
               No Google Cloud Console: APIs e serviços → Credenciais → ID do cliente OAuth (tipo
-              Aplicativo da Web). Ative a API Google Sheets e autorize a origem deste site.
+              Aplicativo da Web). Ative as APIs Google Sheets e Google Drive, e autorize a origem deste site. Reconecte o Google após alterar o Client ID.
             </p>
           </div>
 
@@ -263,6 +336,38 @@ export function SettingsPage() {
               <Button variant="ghost" onClick={handleDisconnectGoogle}>
                 Desconectar
               </Button>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
+            <p className="text-sm font-medium">Sessão na nuvem (qualquer aparelho)</p>
+            <p className="text-xs text-muted-foreground">
+              Salva o workspace completo no seu Google Drive. Em outro celular ou PC, conecte a
+              mesma conta Google e toque em <strong>Restaurar da nuvem</strong>. Ative também a
+              API <em>Google Drive</em> no Console (além da Sheets).
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={handleSaveCloud} disabled={cloudBusy}>
+                {cloudBusy ? "Sincronizando…" : "Salvar na nuvem"}
+              </Button>
+              <Button variant="outline" onClick={handleLoadCloud} disabled={cloudBusy}>
+                Restaurar da nuvem
+              </Button>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={cloudSync}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setCloudSync(on);
+                  setCloudSyncEnabled(on);
+                }}
+              />
+              Lembrar de sincronizar (marque e use “Salvar na nuvem” após mudanças importantes)
+            </label>
+            {lastCloudAt && (
+              <p className="text-xs text-muted-foreground">Última sync: {lastCloudAt}</p>
             )}
           </div>
 

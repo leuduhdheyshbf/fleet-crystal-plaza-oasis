@@ -36,15 +36,6 @@ export function SettingsPage() {
   const persistNow = useWorkspace((s) => s.persistNow);
   const tables = useWorkspace((s) => s.tables);
   const rows = useWorkspace((s) => s.rows);
-  const snapshot = useWorkspace((s) => ({
-    version: s.version,
-    tables: s.tables,
-    rows: s.rows,
-    activity: s.activity,
-    profile: s.profile,
-    views: s.views,
-    locked: s.locked,
-  }));
 
   const [name, setName] = useState(profile.name);
   const [role, setRole] = useState(profile.role);
@@ -188,6 +179,16 @@ export function SettingsPage() {
   }
 
   function exportBackup() {
+    const s = useWorkspace.getState();
+    const snapshot = {
+      version: s.version,
+      tables: s.tables,
+      rows: s.rows,
+      activity: s.activity,
+      profile: s.profile,
+      views: s.views,
+      locked: s.locked,
+    };
     const blob = new Blob([JSON.stringify(snapshot, null, 2)], {
       type: "application/json;charset=utf-8",
     });

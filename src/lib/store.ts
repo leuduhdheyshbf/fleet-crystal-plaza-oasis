@@ -81,8 +81,16 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => ({
     if (get().hydrated) return;
     const loaded = await workspaceAdapter.load();
     if (loaded) {
+      const have = new Set(loaded.tables.map((x) => x.id));
+      const missing = seed.tables.filter((x) => !have.has(x.id));
+      const mergedRows = { ...seed.rows, ...loaded.rows };
+      for (const table of missing) {
+        if (!mergedRows[table.id]) mergedRows[table.id] = seed.rows[table.id] ?? [];
+      }
       set({
         ...loaded,
+        tables: [...loaded.tables, ...missing],
+        rows: mergedRows,
         activity: loaded.activity ?? [],
         views: loaded.views ?? {},
         profile: loaded.profile ?? seed.profile,
@@ -316,12 +324,14 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => ({
   },
 }));
 
+const EMPTY_ROWS: Row[] = [];
+
 export function useTable(tableId: string): TableDef | undefined {
   return useWorkspace((s) => s.tables.find((t) => t.id === tableId));
 }
 
 export function useTableRows(tableId: string): Row[] {
-  return useWorkspace((s) => s.rows[tableId] ?? []);
+  return useWorkspace((s) => s.rows[tableId] || EMPTY_ROWS);
 }
 
 export { cellsFromUnknown };

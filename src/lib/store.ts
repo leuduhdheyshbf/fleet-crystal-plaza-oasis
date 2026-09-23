@@ -107,11 +107,18 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => ({
     const snap = snapshotOf(get());
     void workspaceAdapter.save(snap);
     if (typeof window !== "undefined" && window.localStorage.getItem("nexora.google.cloud_sync") === "1") {
-      void import("@/lib/data/google-export")
+      void import("@/lib/data/google-cloud")
         .then((m) => {
-          const clientId = m.getStoredClientId();
-          if (!clientId || !m.isGoogleConnected()) return;
-          return m.saveWorkspaceToCloud(snap, clientId);
+          const clientId = m.getStoredClientId?.() ?? "";
+          const cid =
+            (typeof window !== "undefined" &&
+              window.localStorage.getItem("nexora.google.client_id")?.trim()) ||
+            "";
+          if (!cid || !m.isGoogleConnected?.()) {
+            // isGoogleConnected is on google-export; cloud uses token in session
+            return m.saveWorkspaceToCloud(snap, cid || clientId);
+          }
+          return m.saveWorkspaceToCloud(snap, cid);
         })
         .catch(() => undefined);
     }

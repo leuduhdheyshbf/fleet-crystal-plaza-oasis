@@ -224,15 +224,11 @@ export function ensureDbReady(): Promise<void> {
   return getSql().then(() => undefined);
 }
 
-// Server-only eager start: kick PGLite bootstrap as soon as this module loads in
-// Node. Client bundles never hit this path (`getSql` throws in the browser).
-const globalBoot = globalThis as typeof globalThis & {
-  __pgBootstrapPromise__?: Promise<void>;
-};
-if (typeof window === "undefined" && dbSource === "pglite") {
-  globalBoot.__pgBootstrapPromise__ ??= ensureDbReady().catch((err) => {
-    globalBoot.__pgBootstrapPromise__ = undefined;
-    console.error("[db] PGLite bootstrap failed:", err);
-    throw err;
-  });
-}
+// Do not eagerly initialize PGLite at module scope.
+// Cloudflare Workers evaluate modules in the global scope before a request
+// handler runs, and PGLite performs asynchronous initialization/random-value
+// generation. Starting it here causes Workers to reject the module with:
+// "Disallowed operation called within global scope."
+//
+// Initialization is intentionally lazy: getSql()/ensureDbReady() are called
+// from request-time server code, where Cloudflare permits those operations.

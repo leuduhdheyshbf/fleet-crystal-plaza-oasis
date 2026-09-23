@@ -104,7 +104,17 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => ({
   },
 
   persistNow: () => {
-    void workspaceAdapter.save(snapshotOf(get()));
+    const snap = snapshotOf(get());
+    void workspaceAdapter.save(snap);
+    if (typeof window !== "undefined" && window.localStorage.getItem("nexora.google.cloud_sync") === "1") {
+      void import("@/lib/data/google-export")
+        .then((m) => {
+          const clientId = m.getStoredClientId();
+          if (!clientId || !m.isGoogleConnected()) return;
+          return m.saveWorkspaceToCloud(snap, clientId);
+        })
+        .catch(() => undefined);
+    }
   },
 
   setLocked: (locked) => {

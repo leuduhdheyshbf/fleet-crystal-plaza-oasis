@@ -143,7 +143,7 @@ export async function syncTableToGoogleSheet(
   const token = await getAccessToken(userId);
   const range = `${sheetName}!A1`;
   const clear = await fetch(
-    `${SHEETS_API}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(sheetName)}!A:ZZ:clear`,
+    `${SHEETS_API}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(sheetName + "!A:ZZ")}:clear`,
     {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },

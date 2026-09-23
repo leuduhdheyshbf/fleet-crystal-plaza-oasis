@@ -2,6 +2,8 @@ import type { ColumnDef, Row, TableDef, WorkspaceSnapshot } from "@/types/worksp
 import { downloadCsv, slugFilename, toCsv } from "@/lib/data/csv";
 
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+const GOOGLE_SCOPES = `${SHEETS_SCOPE} ${DRIVE_SCOPE}`;
 const TOKEN_KEY = "nexora.google.access_token";
 const CLIENT_ID_KEY = "nexora.google.client_id";
 const TOKEN_EXP_KEY = "nexora.google.token_exp";
@@ -155,7 +157,7 @@ export async function connectGoogleSheets(clientId: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const client = window.google!.accounts.oauth2.initTokenClient({
       client_id: id,
-      scope: SHEETS_SCOPE,
+      scope: GOOGLE_SCOPES,
       callback: (resp) => {
         if (resp.error || !resp.access_token) {
           reject(new Error(resp.error || "Autorização negada"));

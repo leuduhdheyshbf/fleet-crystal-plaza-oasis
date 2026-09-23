@@ -5,9 +5,11 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
 import { CommandSearch } from "@/components/layout/CommandSearch";
 import { LockScreen } from "@/components/layout/LockScreen";
+import { LoginScreen } from "@/components/layout/LoginScreen";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useWorkspace } from "@/lib/store";
+import { getSupabase } from "@/lib/supabase/client";
 
 const TITLES: Record<string, string> = {
   "/": "Dashboard",
@@ -29,10 +31,37 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
 
   useEffect(() => {
     void hydrate();
   }, [hydrate]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const sb = getSupabase();
+    if (!sb) {
+      setAuthReady(true);
+      return;
+    }
+
+    void sb.auth.getSession().then(({ data }) => {
+      if (cancelled) return;
+      setSessionEmail(data.session?.user?.email ?? null);
+      setAuthReady(true);
+    });
+
+    const { data: sub } = sb.auth.onAuthStateChange((_event, session) => {
+      setSessionEmail(session?.user?.email ?? null);
+      setAuthReady(true);
+    });
+
+    return () => {
+      cancelled = true;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -45,11 +74,35 @@ export function AppShell({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  if (!hydrated) {
+  if (!hydrated || !authReady) {
     return (
       <div className="app-shell-bg flex min-h-dvh items-center justify-center">
-        <div className="text-sm text-muted-foreground">Carregando seu workspace…</div>
+        <div className="text-sm text-muted-foreground">Carregando…</div>
       </div>
+    );
+  }
+
+  if (!sessionEmail) {
+    return (
+      <>
+        <LoginScreen
+          onAuthenticated={() => {
+            const sb = getSupabase();
+            void sb?.auth.getSession().then(({ data }) => {
+              setSessionEmail(data.session?.user?.email ?? null);
+            });
+          }}
+        />
+        <Toaster
+          theme="dark"
+          position="bottom-right"
+          toastOptions={{
+            classNames: {
+              toast: "bg-card text-foreground border-border shadow-overlay",
+            },
+          }}
+        />
+      </>
     );
   }
 

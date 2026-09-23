@@ -75,9 +75,10 @@ const seed = createSeedSnapshot();
 
 export const useWorkspace = create<WorkspaceState>()((set, get) => ({
   ...seed,
-  hydrated: true,
+  hydrated: false,
 
   hydrate: async () => {
+    if (get().hydrated) return;
     const loaded = await workspaceAdapter.load();
     if (loaded) {
       set({

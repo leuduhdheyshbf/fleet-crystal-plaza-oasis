@@ -1,17 +1,14 @@
 import type { ColumnDef, Row } from "@/types/workspace";
 import { cellsFromUnknown } from "@/lib/data/validation";
-import { sanitizeText } from "@/lib/data/sanitize";
 import { uid } from "@/lib/utils";
 
 export type Delimiter = "," | ";" | "\t" | "|";
-
-const DELIMITERS: Delimiter[] = [",", ";", "\t", "|"];
 
 export function detectDelimiter(text: string): Delimiter {
   const first = text.split(/\r?\n/).find((l) => l.trim()) ?? "";
   let best: Delimiter = ",";
   let bestCount = -1;
-  for (const d of DELIMITERS) {
+  for (const d of [",", ";", "\t", "|"] as Delimiter[]) {
     const count = splitCsvLine(first, d).length;
     if (count > bestCount) {
       bestCount = count;
@@ -25,22 +22,16 @@ export function splitCsvLine(line: string, delimiter: Delimiter): string[] {
   const out: string[] = [];
   let cur = "";
   let inQuotes = false;
-  for (let i = 0; i < line.length; i += 1) {
+  for (let i = 0; i < line.length; i++) {
     const ch = line[i];
-    if (inQuotes) {
-      if (ch === '"') {
-        if (line[i + 1] === '"') {
-          cur += '"';
-          i += 1;
-        } else {
-          inQuotes = false;
-        }
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        cur += '"';
+        i++;
       } else {
-        cur += ch;
+        inQuotes = !inQuotes;
       }
-    } else if (ch === '"') {
-      inQuotes = true;
-    } else if (ch === delimiter) {
+    } else if (ch === delimiter && !inQuotes) {
       out.push(cur);
       cur = "";
     } else {
@@ -52,30 +43,32 @@ export function splitCsvLine(line: string, delimiter: Delimiter): string[] {
 }
 
 export function parseDelimited(text: string, delimiter: Delimiter): string[][] {
-  const normalized = text.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const lines = normalized.split("\n");
   const rows: string[][] = [];
   let buf = "";
-  let quotes = 0;
+  let inQuotes = false;
   for (const line of lines) {
-    buf = buf ? `${buf}\n${line}` : line;
-    quotes += (line.match(/"/g) ?? []).length;
-    if (quotes % 2 === 0) {
+    if (buf.length) buf += "\n";
+    buf += line;
+    const quotes = (buf.match(/"/g) || []).length;
+    inQuotes = quotes % 2 === 1;
+    if (!inQuotes) {
       if (buf.trim().length > 0) rows.push(splitCsvLine(buf, delimiter));
       buf = "";
-      quotes = 0;
     }
   }
   if (buf.trim()) rows.push(splitCsvLine(buf, delimiter));
   return rows;
 }
 
-function slug(name: string): string {
-  return sanitizeText(name)
-    .toLowerCase()
+function slug(s: string): string {
+  return s
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "");
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+    .trim();
 }
 
 export function mapHeadersToColumns(
@@ -84,9 +77,7 @@ export function mapHeadersToColumns(
 ): (string | null)[] {
   return headers.map((h) => {
     const s = slug(h);
-    const exact = columns.find(
-      (c) => slug(c.name) === s || slug(c.id) === s,
-    );
+    const exact = columns.find((c) => slug(c.name) === s || c.id === h);
     if (exact) return exact.id;
     if (s === "id" || s === "identidade") {
       const idCol = columns.find((c) => c.id === "identidade" || slug(c.name) === "id");
@@ -102,9 +93,63 @@ export interface ImportPreview {
   mapping: (string | null)[];
   sample: string[][];
   total: number;
+  /** true quando cola linha a linha (um valor por linha) */
+  vertical?: boolean;
+}
+
+/**
+ * Cola vertical: uma linha = um campo.
+ * Ex.:
+ *   marcos
+ *   15
+ *   souzazx
+ * vira uma linha com colunas na ordem da tabela.
+ */
+function isVerticalFieldPaste(text: string): boolean {
+  const lines = text
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lines.length < 2) return false;
+  const plain = lines.filter((l) => !/[\t,;|]/.test(l)).length;
+  return plain >= lines.length * 0.8;
+}
+
+function verticalToTable(text: string, columns: ColumnDef[]): string[][] {
+  const values = text
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const colCount = Math.max(columns.length, 1);
+  const headers = columns.map((c) => c.name);
+  const body: string[][] = [];
+  for (let i = 0; i < values.length; i += colCount) {
+    const chunk = values.slice(i, i + colCount);
+    while (chunk.length < colCount) chunk.push("");
+    body.push(chunk);
+  }
+  return [headers, ...body];
 }
 
 export function previewImport(text: string, columns: ColumnDef[]): ImportPreview {
+  if (isVerticalFieldPaste(text) && columns.length > 0) {
+    const table = verticalToTable(text, columns);
+    const headers = (table[0] ?? []).map((h) => h.trim());
+    const body = table.slice(1);
+    return {
+      delimiter: ",",
+      headers,
+      mapping: columns.map((c) => c.id),
+      sample: body.slice(0, 8),
+      total: body.length,
+      vertical: true,
+    };
+  }
+
   const delimiter = detectDelimiter(text);
   const table = parseDelimited(text, delimiter);
   const headers = (table[0] ?? []).map((h) => h.trim());
@@ -125,8 +170,13 @@ export function rowsFromImport(
   mapping: (string | null)[],
   tableId: string,
 ): Row[] {
-  const table = parseDelimited(text, delimiter);
-  const body = table.slice(1);
+  let body: string[][];
+  if (isVerticalFieldPaste(text) && columns.length > 0) {
+    body = verticalToTable(text, columns).slice(1);
+  } else {
+    const table = parseDelimited(text, delimiter);
+    body = table.slice(1);
+  }
   const now = Date.now();
   return body
     .map((line) => {
@@ -169,27 +219,25 @@ export function toCsv(
       })
       .join(delimiter),
   );
-  return [header, ...lines].join("\r\n");
+  return [header, ...lines].join("\n");
 }
 
 export function downloadCsv(filename: string, csv: string): void {
-  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
-  document.body.appendChild(a);
   a.click();
-  a.remove();
   URL.revokeObjectURL(url);
 }
 
 export function slugFilename(name: string): string {
   return (
-    sanitizeText(name)
-      .toLowerCase()
+    name
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "") || "tabela"
   );

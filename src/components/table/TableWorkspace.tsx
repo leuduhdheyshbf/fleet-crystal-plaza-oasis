@@ -56,6 +56,7 @@ import { RowModal } from "@/components/table/RowModal";
 import { RowDrawer } from "@/components/table/RowDrawer";
 import { FilterPanel } from "@/components/table/FilterPanel";
 import { ImportModal } from "@/components/table/ImportModal";
+import { PullGoogleModal } from "@/components/table/PullGoogleModal";
 import { BulkActionBar } from "@/components/table/BulkActionBar";
 import { FieldInput } from "@/components/table/FieldInput";
 import { useWorkspace } from "@/lib/store";
@@ -100,6 +101,7 @@ export function TableWorkspace({
   const [editRow, setEditRow] = useState<Row | null>(null);
   const [viewRow, setViewRow] = useState<Row | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [pullOpen, setPullOpen] = useState(false);
   const [deleteIds, setDeleteIds] = useState<string[] | null>(null);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [bulkCol, setBulkCol] = useState("");
@@ -215,6 +217,9 @@ export function TableWorkspace({
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
             <Upload /> Importar
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setPullOpen(true)}>
+            <Download /> Puxar Google
+          </Button>
           <Button variant="outline" size="sm" onClick={() => exportRows(sorted)}>
             <Download /> Exportar
           </Button>
@@ -250,10 +255,7 @@ export function TableWorkspace({
               <FilterPanel columns={table.columns} rules={filters} onChange={setFilters} />
             </PopoverContent>
           </Popover>
-          <Tabs
-            value={view}
-            onValueChange={(v) => setView(table.id, v as ViewMode)}
-          >
+          <Tabs value={view} onValueChange={(v) => setView(table.id, v as ViewMode)}>
             <TabsList>
               <TabsTrigger value="grid" className="hidden md:inline-flex">
                 <LayoutGrid className="size-3.5" /> Grid
@@ -414,6 +416,20 @@ export function TableWorkspace({
           }
         }}
       />
+      <PullGoogleModal
+        open={pullOpen}
+        onOpenChange={setPullOpen}
+        columns={table.columns}
+        tableId={table.id}
+        tableName={table.name}
+        onPull={(rows, mode) => {
+          if (mode === "replace") {
+            useWorkspace.getState().replaceRows(table.id, rows);
+          } else {
+            importRows(table.id, rows);
+          }
+        }}
+      />
       <ImportModal
         open={importOpen}
         onOpenChange={setImportOpen}
@@ -421,7 +437,9 @@ export function TableWorkspace({
         tableId={table.id}
         onImport={(rows) => {
           importRows(table.id, rows);
-          toast.success(`${rows.length} registro${rows.length > 1 ? "s" : ""} importado${rows.length > 1 ? "s" : ""}`);
+          toast.success(
+            `${rows.length} registro${rows.length > 1 ? "s" : ""} importado${rows.length > 1 ? "s" : ""}`,
+          );
         }}
       />
 

@@ -21,7 +21,7 @@ const TITLES: Record<string, string> = {
 function pageTitle(pathname: string): string {
   if (TITLES[pathname]) return TITLES[pathname];
   if (pathname.startsWith("/tables/")) return "Tabela";
-  return "Nexora";
+  return "ＬＡＴＡＭ　友";
 }
 
 export function AppShell({ children }: { children: ReactNode }) {

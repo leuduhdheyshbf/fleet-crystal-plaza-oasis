@@ -126,7 +126,7 @@ export function ImportModal({
           <DialogHeader>
             <DialogTitle>Importar CSV / TXT</DialogTitle>
             <DialogDescription>
-              Detectamos vírgula, ponto e vírgula, TAB ou pipe. Confira o mapeamento antes de importar.
+              Cole um valor por linha ou use CSV. Confira o mapeamento antes de importar.
             </DialogDescription>
           </DialogHeader>
         </div>
@@ -140,6 +140,30 @@ export function ImportModal({
             />
             {fileName ? fileName : "Selecionar arquivo CSV ou TXT"}
           </label>
+          <div className="grid gap-1.5">
+            <Label>Ou cole aqui (uma linha = um campo)</Label>
+            <textarea
+              className="min-h-28 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+              placeholder={"marcos\n15\nsouzazx\n838485724\n229948284756"}
+              value={text}
+              onChange={(e) => {
+                const raw = e.target.value;
+                setText(raw);
+                setFileName(raw.trim() ? "texto colado" : "");
+                if (!raw.trim()) {
+                  setPreview(null);
+                  setError("");
+                  return;
+                }
+                setError("");
+                setPreview(previewImport(raw, columns));
+              }}
+            />
+            <p className="text-xs text-muted-foreground">
+              Se colar um valor por linha, preenchemos as colunas na ordem da tabela (e quebramos em
+              várias linhas se passar do número de colunas).
+            </p>
+          </div>
           {error && <p className="text-xs text-destructive">{error}</p>}
           {preview && (
             <>
@@ -165,7 +189,8 @@ export function ImportModal({
                   </Select>
                 </div>
                 <p className="self-end text-sm text-muted-foreground">
-                  {preview.total} linha{preview.total === 1 ? "" : "s"} detectada{preview.total === 1 ? "" : "s"}
+                  {preview.total} linha{preview.total === 1 ? "" : "s"}
+                  {preview.vertical ? " (cola vertical)" : ""}
                 </p>
               </div>
               <div className="grid gap-2">

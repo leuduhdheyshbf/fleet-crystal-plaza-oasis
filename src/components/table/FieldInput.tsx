@@ -1,3 +1,4 @@
+import type { ClipboardEvent } from "react";
 import type { CellValue, ColumnDef } from "@/types/workspace";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,15 +18,27 @@ export function FieldInput({
   onChange,
   error,
   autoFocus,
+  onPasteText,
 }: {
   column: ColumnDef;
   value: CellValue;
   onChange: (v: CellValue) => void;
   error?: string;
   autoFocus?: boolean;
+  /** Se retornar true, o paste padrão é cancelado (ex.: preenche vários campos). */
+  onPasteText?: (text: string) => boolean;
 }) {
   const str = value === null || value === undefined ? "" : String(value);
   const invalid = Boolean(error);
+
+  function handlePaste(e: ClipboardEvent<HTMLInputElement>) {
+    if (!onPasteText) return;
+    const text = e.clipboardData.getData("text/plain");
+    if (!text) return;
+    if (onPasteText(text)) {
+      e.preventDefault();
+    }
+  }
 
   if (column.type === "boolean") {
     return (
@@ -93,6 +106,7 @@ export function FieldInput({
         aria-invalid={invalid}
         inputMode={column.type === "number" || column.type === "phone" ? "numeric" : undefined}
         onChange={(e) => onChange(e.target.value === "" ? null : e.target.value)}
+        onPaste={handlePaste}
         placeholder={placeholderFor(column)}
       />
       {error && <p className="text-xs text-destructive">{error}</p>}

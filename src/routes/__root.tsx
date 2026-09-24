@@ -4,7 +4,7 @@ import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import { AppShell } from "@/components/layout/AppShell";
 import appCss from "../styles.css?url";
 
-const APP_NAME = "Nexora";
+const APP_NAME = "ＬＡＴＡＭ　友";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -15,7 +15,7 @@ export const Route = createRootRoute({
       { name: "theme-color", content: "#07080c" },
       {
         name: "description",
-        content: "Workspace premium para gerenciar membros, tabelas e operações da equipe.",
+        content: "LATAM — workspace para membros, tabelas e operações da equipe.",
       },
     ],
     links: [

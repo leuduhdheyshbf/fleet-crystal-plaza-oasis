@@ -1,5 +1,7 @@
 import type { ColumnDef, Row, TableDef, WorkspaceSnapshot } from "@/types/workspace";
-import { downloadCsv, slugFilename, toCsv } from "@/lib/data/csv";
+import { downloadCsv, mapHeadersToColumns, slugFilename, toCsv } from "@/lib/data/csv";
+import { cellsFromUnknown } from "@/lib/data/validation";
+import { uid } from "@/lib/utils";
 
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
@@ -19,7 +21,6 @@ function encodeCell(value: unknown): string | number | boolean {
   return String(value);
 }
 
-/** Nome de aba válido para o Google Sheets. */
 export function safeSheetTitle(name: string, used: Set<string>): string {
   let base = name
     .replace(/[:\\/?*\[\]]/g, " ")
@@ -45,7 +46,6 @@ export function tableToValues(table: TableDef, rows: Row[]): (string | number | 
   ];
 }
 
-/** Monta uma aba por tabela do workspace. */
 export function buildAllSheetPayloads(snapshot: Pick<WorkspaceSnapshot, "tables" | "rows">): SheetPayload[] {
   const used = new Set<string>();
   return snapshot.tables.map((table) => ({
@@ -144,7 +144,6 @@ function loadGisScript(): Promise<void> {
   });
 }
 
-/** Solicita token OAuth (popup Google). */
 export async function connectGoogleSheets(clientId: string): Promise<string> {
   const id = clientId.trim();
   if (!id) throw new Error("Informe o Google Client ID (tipo Web) nas configurações");
@@ -203,10 +202,6 @@ async function sheetsFetch(path: string, token: string, init?: RequestInit): Pro
   });
 }
 
-/**
- * Cria uma planilha nova no Google Drive do usuário com **uma aba por tabela**
- * e preenche todos os dados do workspace.
- */
 export async function createSpreadsheetWithAllTables(
   snapshot: Pick<WorkspaceSnapshot, "tables" | "rows" | "profile">,
   clientId: string,
@@ -215,7 +210,7 @@ export async function createSpreadsheetWithAllTables(
 
   const token = await ensureAccessToken(clientId);
   const payloads = buildAllSheetPayloads(snapshot);
-  const title = `Nexora — ${snapshot.profile?.name || "Workspace"} — ${new Date().toLocaleDateString("pt-BR")}`;
+  const title = `LATAM — ${snapshot.profile?.name || "Workspace"} — ${new Date().toLocaleDateString("pt-BR")}`;
 
   const createRes = await sheetsFetch("", token, {
     method: "POST",
@@ -282,7 +277,6 @@ export async function createSpreadsheetWithAllTables(
   };
 }
 
-/** Atualiza uma aba existente (opcional, por tabela). */
 export async function syncOneTableToExistingSheet(
   snapshot: Pick<WorkspaceSnapshot, "tables" | "rows">,
   tableId: string,
@@ -322,4 +316,117 @@ export async function syncOneTableToExistingSheet(
   }
 
   return { updatedRows: rows.length };
+}
+
+export function extractSpreadsheetId(urlOrId: string): string {
+  const s = urlOrId.trim();
+  const m = s.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (m) return m[1];
+  if (/^[a-zA-Z0-9-_]{20,}$/.test(s)) return s;
+  throw new Error("URL ou ID da planilha inválido");
+}
+
+export type SheetTabInfo = { title: string; sheetId: number };
+
+export async function listSpreadsheetTabs(
+  spreadsheetIdOrUrl: string,
+  clientId: string,
+): Promise<{ spreadsheetId: string; title: string; tabs: SheetTabInfo[] }> {
+  const spreadsheetId = extractSpreadsheetId(spreadsheetIdOrUrl);
+  const token = await ensureAccessToken(clientId);
+  const res = await sheetsFetch(
+    `/${encodeURIComponent(spreadsheetId)}?fields=spreadsheetId,properties.title,sheets.properties`,
+    token,
+  );
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Falha ao ler planilha: ${res.status} ${body.slice(0, 200)}`);
+  }
+  const data = (await res.json()) as {
+    spreadsheetId: string;
+    properties?: { title?: string };
+    sheets?: { properties?: { title?: string; sheetId?: number } }[];
+  };
+  const tabs: SheetTabInfo[] = (data.sheets ?? [])
+    .map((s) => ({
+      title: s.properties?.title ?? "Sheet1",
+      sheetId: s.properties?.sheetId ?? 0,
+    }))
+    .filter((t) => t.title);
+  return {
+    spreadsheetId: data.spreadsheetId || spreadsheetId,
+    title: data.properties?.title ?? "Planilha",
+    tabs,
+  };
+}
+
+export async function fetchSheetValues(
+  spreadsheetIdOrUrl: string,
+  sheetName: string,
+  clientId: string,
+): Promise<string[][]> {
+  const spreadsheetId = extractSpreadsheetId(spreadsheetIdOrUrl);
+  const token = await ensureAccessToken(clientId);
+  const tab = sheetName.trim() || "Sheet1";
+  const range = `'${tab.replace(/'/g, "''")}'!A:ZZ`;
+  const res = await sheetsFetch(
+    `/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`,
+    token,
+  );
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Falha ao puxar aba: ${res.status} ${body.slice(0, 200)}`);
+  }
+  const data = (await res.json()) as { values?: unknown[][] };
+  const values = data.values ?? [];
+  return values.map((row) =>
+    row.map((cell) => (cell === null || cell === undefined ? "" : String(cell))),
+  );
+}
+
+export function sheetValuesToRows(
+  values: string[][],
+  columns: ColumnDef[],
+  tableId: string,
+): Row[] {
+  if (!values.length || !columns.length) return [];
+  const headers = (values[0] ?? []).map((h) => h.trim());
+  const body = values.slice(1);
+  let mapping = mapHeadersToColumns(headers, columns);
+  const mappedCount = mapping.filter(Boolean).length;
+  if (mappedCount === 0) {
+    mapping = columns.map((c) => c.id);
+  } else {
+    mapping = mapping.map((id, i) => id ?? columns[i]?.id ?? null);
+  }
+  const now = Date.now();
+  return body
+    .map((line) => {
+      const raw: Record<string, unknown> = {};
+      mapping.forEach((colId, i) => {
+        if (!colId) return;
+        raw[colId] = line[i] ?? "";
+      });
+      return {
+        id: uid("row"),
+        tableId,
+        cells: cellsFromUnknown(columns, raw),
+        createdAt: now,
+        updatedAt: now,
+      } satisfies Row;
+    })
+    .filter((r) => Object.values(r.cells).some((v) => v !== null && v !== ""));
+}
+
+export async function pullSheetAsRows(
+  spreadsheetIdOrUrl: string,
+  sheetName: string,
+  columns: ColumnDef[],
+  tableId: string,
+  clientId: string,
+): Promise<{ rows: Row[]; headers: string[]; total: number }> {
+  const values = await fetchSheetValues(spreadsheetIdOrUrl, sheetName, clientId);
+  const headers = (values[0] ?? []).map((h) => h.trim());
+  const rows = sheetValuesToRows(values, columns, tableId);
+  return { rows, headers, total: rows.length };
 }
